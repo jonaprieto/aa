@@ -23,3 +23,32 @@ jobs:
           python-version: ${{ matrix.python }}
       - run: python aa selftest
       - run: python aa --help
+
+  formula:
+    runs-on: macos-latest
+    env:
+      HOMEBREW_NO_AUTO_UPDATE: 1
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Audit the formula as committed
+        run: |
+          brew tap-new --no-git ci/local
+          tap=$(brew --repository ci/local)
+          cp Formula/aa.rb "$tap/Formula/aa.rb"
+          brew audit --strict ci/local/aa
+
+      - name: Install and test it from this checkout
+        run: |
+          # actions/checkout leaves a detached HEAD
+          b=ci-${GITHUB_SHA::7}
+          git checkout -q -B "$b"
+          tap=$(brew --repository ci/local)
+          from='head "https://github.com/jonaprieto/aa.git"'
+          from+=', branch: "main"'
+          to="head \"file://$PWD\", using: :git, branch: \"$b\""
+          sed "s|$from|$to|" Formula/aa.rb > "$tap/Formula/aa.rb"
+          # a sed that matched nothing would install from GitHub
+          grep -q "file://$PWD" "$tap/Formula/aa.rb"
+          brew install --HEAD ci/local/aa
+          brew test ci/local/aa

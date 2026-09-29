@@ -4,6 +4,7 @@
 [![python](https://img.shields.io/badge/python-3.9%2B-3776ab)](https://www.python.org)
 [![dependencies](https://img.shields.io/badge/dependencies-none-brightgreen)](aa)
 [![license](https://img.shields.io/github/license/jonaprieto/aa)](LICENSE)
+[![Homebrew](https://img.shields.io/badge/brew-jonaprieto%2Faa-fbb040?logo=homebrew)](#install)
 
 Search for a book or paper from the terminal, pick one, and get a verified, well-named file.
 
@@ -28,6 +29,16 @@ aa> 2
 `aa` is a single Python file with no dependencies beyond the standard library.
 
 ## Install
+
+With Homebrew:
+
+```sh
+brew tap jonaprieto/aa https://github.com/jonaprieto/aa
+brew trust --formula jonaprieto/aa/aa   # third-party taps need it
+brew install aa
+```
+
+Or grab the single file, which only needs Python 3.9 or newer:
 
 ```sh
 curl -fsSL https://raw.githubusercontent.com/jonaprieto/aa/main/aa -o ~/.local/bin/aa
