@@ -1,0 +1,536 @@
+#!/usr/bin/env python3
+"""aa: search LibGen, download by md5 via Anna's Archive record data.
+
+  aa [query...]            interactive: search, pick by number, download; at the prompt,
+                           any text is a new search (/text forces search, e.g. /1984)
+  aa search <query...>     LibGen search -> md5 list
+  aa info <md5>            Anna's Archive record summary
+  aa get <md5> [-o DIR]    download (AA member API if AA_KEY set, then LibGen, then IPFS)
+  aa torrent <md5>         magnet + file path inside torrent
+
+Files are renamed like papershelf's Book preset, [author:surname]-[year]-[title]
+(cormen-2022-introduction-to-algorithms-4.pdf), and opened after an interactive download.
+
+Env:
+  AA_DIR     download folder (default ~/Downloads)
+  AA_NAME    filename pattern with [author] [year] [title]; "original" keeps the server's name
+  AA_OPEN    0 to not open files after download
+  AA_KEY     Anna's Archive member secret key
+  AA_DOMAIN  default annas-archive.gl;  LG_DOMAIN  default libgen.li
+"""
+import hashlib, html, json, os, re, shutil, subprocess, sys, textwrap, unicodedata
+import urllib.error, urllib.parse, urllib.request
+
+AA = "https://" + os.environ.get("AA_DOMAIN", "annas-archive.gl")
+LG = "https://" + os.environ.get("LG_DOMAIN", "libgen.li")
+UA = {"User-Agent": "Mozilla/5.0"}
+COLOR = sys.stdout.isatty() and not os.environ.get("NO_COLOR")
+EXT_COLOR = dict(pdf="44", epub="42", mobi="43", azw3="43", djvu="45", fb2="46")  # bg; red stays for errors
+OUTDIR = os.path.expanduser(os.environ.get("AA_DIR", "~/Downloads"))
+NAME = os.environ.get("AA_NAME", "[author]-[year]-[title]")
+
+
+def c(s, code):
+    return f"\033[{code}m{s}\033[0m" if COLOR else str(s)
+
+
+def err(s, code="2"):
+    print(c(s, code) if sys.stderr.isatty() else s, file=sys.stderr)
+# ponytail: hardcoded from a 2026-09 probe; reorder when gateways die.
+GOOD_GATEWAYS = ["ipfs.orbitor.dev", "snapshot.4everland.link", "ipfs.raribleuserdata.com",
+                 "ipfs.filebase.io", "magic.decentralized-content.com"]
+
+
+def fetch(url, timeout=30):
+    return urllib.request.urlopen(urllib.request.Request(url, headers=UA), timeout=timeout)
+
+
+def text(url):
+    return fetch(url).read(8 << 20).decode("utf-8", "replace")  # cap: pages are ~100 KB
+
+
+def safe(s):
+    """Drop control chars (ESC, C1, ...) from remote text before it reaches the terminal."""
+    return re.sub(r"[\x00-\x1f\x7f-\x9f]", "", str(s))
+
+
+def strip(s):
+    s = re.sub(r'\s[\w-]+="[^"]*"', "", s[:5000])  # attrs first: libgen tooltips contain "<br>"
+    return safe(re.sub(r"\s+", " ", html.unescape(re.sub(r"<[^>]+>", " ", s))).strip())
+
+
+def safe_name(name, md5):
+    """Server-chosen filename -> plain basename: no dirs, no dotfiles, no control chars, bounded length."""
+    name = safe(os.path.basename(name.replace("\\", "/"))).strip().lstrip(".")
+    stem, ext = os.path.splitext(name)
+    stem, ext = stem.encode()[:180].decode("utf-8", "ignore").strip(), ext[:10]
+    return (stem or md5) + ext
+
+
+def free_path(outdir, name, md5):
+    """Never overwrite: add the md5 prefix when the name is taken."""
+    path = os.path.join(outdir, name)
+    if os.path.exists(path):
+        stem, ext = os.path.splitext(name)
+        path = os.path.join(outdir, f"{stem} ({md5[:8]}){ext}")
+    return path
+
+
+def is_isbn(d):
+    if len(d) == 13:
+        return d[:3] in ("978", "979")
+    return sum((10 - i) * (10 if ch in "Xx" else int(ch)) for i, ch in enumerate(d)) % 11 == 0
+
+
+def split_authors(a):
+    """'A; B', 'A & B', 'A and B', or 'First Last, First Last'; keeps 'Last, First' as one name."""
+    parts = [x.strip() for x in re.split(r"\s*[;&]\s*|\s+and\s+", a) if x.strip()]
+    if len(parts) == 1 and "," in a:
+        comma = [x.strip() for x in a.split(",") if x.strip()]
+        if all(len(x.split()) >= 2 for x in comma):  # every piece is a full name
+            parts = comma
+    return [re.sub(r"\s*\(.*?\)", "", x).strip() for x in parts]
+
+
+def parse_libgen(page):
+    table = re.search(r'<table[^>]*id="tablelibgen".*?</table>', page, re.S)
+    out = []
+    for row in re.findall(r"<tr>.*?</tr>", table.group(0) if table else "", re.S):
+        cells = re.findall(r"<td[^>]*>(.*?)</td>", row, re.S)
+        md5 = re.search(r"md5=([0-9a-fA-F]{32})", row)
+        if len(cells) < 9 or not md5 or md5.group(1).lower() in {r["md5"] for r in out}:
+            continue
+        title = strip(re.sub(r'<span class="badge.*?</span>', "", cells[0], flags=re.S))
+        title = re.sub(r"[\s;,]{0,4}(?:ISBN[:\s]*)?\b(97[89]\d{10}|\d{9}[\dXx])\b",
+                       lambda m: "" if is_isbn(m.group(1)) else m.group(0), title)
+        title = re.sub(r"\s*DOI:\s*\S+|\s*ISBN:?\s*$", "", title).strip()  # ISBN/DOI noise
+        title = title.split(" || ")[0].strip()
+        title = re.sub(r"^(.{6,}?)\s+\1\b", r"\1", title)  # series prefix repeats the title
+        author = re.sub(r"\s*\((?:author|auth\.|editor|ed\.)\)|\s*\[\.\.\.\]\s*;?", "", strip(cells[1]), flags=re.I)
+        out.append(dict(md5=md5.group(1).lower(), title=title[:200], author=author[:120],
+                        year=strip(cells[3]), lang=strip(cells[4])[:20], size=strip(cells[6]),
+                        ext=strip(cells[7])[:8], article='title="Journal article"' in row))
+    # same title+format+size is the same book uploaded twice: keep the first
+    seen, uniq = set(), []
+    for r in out:
+        k = (re.sub(r"\W+", "", r["title"].lower()), re.sub(r"\W+", "", r["author"].lower()),
+             r["year"][:4], r["ext"], r["size"])
+        if k not in seen:
+            seen.add(k)
+            uniq.append(r)
+    return sorted(uniq, key=lambda r: r["article"])  # books first, stable
+
+
+def record(md5):
+    """Full AA record, or None: it is members-only for most md5s (403)."""
+    try:
+        return json.load(fetch(f"{AA}/db/aarecord_elasticsearch/md5:{md5}.json"))
+    except urllib.error.HTTPError as e:
+        if e.code == 403:
+            return None
+        raise
+
+
+def sources(md5, rec):
+    key = os.environ.get("AA_KEY")
+    if key:
+        try:
+            r = json.load(fetch(f"{AA}/dyn/api/fast_download.json?md5={md5}&key={urllib.parse.quote(key)}"))
+            if str(r.get("download_url")).startswith("https://"):
+                yield "aa-fast", r["download_url"]
+            else:
+                print(f"  aa-fast: {r.get('error')}", file=sys.stderr)
+        except Exception as e:
+            print(f"  aa-fast: {e}", file=sys.stderr)
+    try:
+        get = re.search(r'href="(get\.php\?md5=[^"]+)"', text(f"{LG}/ads.php?md5={md5}"))
+        if get:
+            yield "libgen", f"{LG}/" + html.unescape(get.group(1))
+    except Exception as e:
+        print(f"  libgen: {e}", file=sys.stderr)
+    cids = []
+    for u in (rec or {}).get("additional", {}).get("ipfs_urls") or []:
+        cid = u.get("url", "").partition("/ipfs/")[2].split("?")[0]
+        if re.fullmatch(r"[A-Za-z0-9]+", cid) and cid not in cids:
+            cids.append(cid)
+    for cid in cids:
+        for gw in GOOD_GATEWAYS:
+            yield gw, f"https://{gw}/ipfs/{cid}"
+
+
+def download(url, outdir, md5, name):
+    """Stream to outdir; keep it only if the md5 matches (gateways happily serve HTML with 200/206)."""
+    h, tmp = hashlib.md5(), os.path.join(outdir, md5 + ".part")
+    try:
+        with fetch(url, timeout=60) as r, open(tmp, "wb") as f:
+            cd = re.search(r"filename\*?=(?:UTF-8'')?\"?([^\";]+)", r.headers.get("Content-Disposition", ""))
+            size, done = int(r.headers.get("Content-Length") or 0), 0
+            while chunk := r.read(1 << 16):
+                h.update(chunk)
+                f.write(chunk)
+                done += len(chunk)
+                if sys.stderr.isatty():
+                    pct = f"{100 * done // size}%" if size else ""
+                    print(f"\r  {done >> 20} MB {pct}   ", end="", file=sys.stderr)
+        if sys.stderr.isatty():
+            print(file=sys.stderr)
+        if h.hexdigest() != md5:
+            return None
+        name = name or (urllib.parse.unquote(cd.group(1)) if cd else md5 + ".bin")
+        path = free_path(outdir, safe_name(name, md5), md5)
+        os.replace(tmp, path)
+        return path
+    finally:
+        if os.path.exists(tmp):
+            os.remove(tmp)
+
+
+def search(args):
+    q = urllib.parse.quote_plus(" ".join(args))
+    try:
+        page = text(f"{LG}/index.php?req={q}&res=50")
+    except Exception:
+        page = text(f"{LG}/index.php?req={q}&res=50")  # libgen flakes; one retry
+    return parse_libgen(page)
+
+
+def cmd_search(args):
+    try:
+        rows = search(args)
+    except Exception as e:
+        sys.exit(f"search failed: {e} (LibGen at {LG}; set LG_DOMAIN to try a mirror)")
+    for r in rows:
+        print(f"{r['md5']}  {r['ext']:5} {r['size']:>8}  {r['year'][:4]:4}  {r['title']} / {r['author']}")
+    if not rows:
+        print("no results", file=sys.stderr)
+
+
+def cmd_info(args):
+    md5 = args[0].lower()
+    rec = record(md5)
+    label = lambda k: c(f"  {k:<9}", "2")
+    if not rec:
+        print(label("md5") + md5)
+        print(label("record") + c("members-only on Anna's Archive", "33"))
+        print(label("libgen") + f"{LG}/ads.php?md5={md5}")
+        return
+    fu, add = rec["file_unified_data"], rec["additional"]
+    print("  " + c(safe(fu.get("title_best")), "1"))
+    print(label("author") + c(safe(fu.get("author_best")), "36"))
+    print(label("file") + safe(f"{fu.get('extension_best')}, {int(fu.get('filesize_best') or 0) >> 20} MB, {fu.get('year_best')}"))
+    print(label("name") + safe(urllib.parse.unquote(add.get("filename") or "")))
+    for t in add.get("torrent_paths") or []:
+        print(label("torrent") + safe(f"{t['torrent_path']} ({t['file_level1']})"))
+    for name, url, _ in add.get("download_urls") or []:
+        print(label("mirror") + f"{c(safe(name), '36')}  {safe(url)}")
+
+
+def slug(s, limit=60):
+    s = unicodedata.normalize("NFKD", s).encode("ascii", "ignore").decode().lower()
+    s = re.sub(r"[^a-z0-9]+", "-", s).strip("-")
+    return s[:limit].rsplit("-", 1)[0] if len(s) > limit else s
+
+
+def surname(author):
+    """First author's family name: 'Cormen, Thomas H.' and 'Thomas H. Cormen' both give Cormen."""
+    first = (split_authors(author) or [""])[0]
+    return first.split(",")[0] if "," in first else (first.split() or [""])[-1]
+
+
+def nice_name(title, author, year, ext):
+    """papershelf Book preset: [author:surname]-[year]-[title], lowercase slugs."""
+    fields = dict(author=slug(surname(author or ""), 30), year=(re.search(r"\d{4}", year or "") or [""])[0],
+                  title=slug(title or ""))
+    name = re.sub(r"\[(\w+)\]", lambda m: fields.get(m.group(1), ""), NAME)
+    name = re.sub(r"-{2,}", "-", name).strip("-")
+    return f"{name}.{ext}" if name and ext else None
+
+
+def open_file(path):
+    if os.environ.get("AA_OPEN", "1") != "0":
+        try:
+            subprocess.run(["open" if sys.platform == "darwin" else "xdg-open", path],
+                           stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        except OSError:
+            pass
+
+
+def get_file(md5, outdir=OUTDIR, name=None):
+    """name: preferred filename (papershelf style); None falls back to the record's or the server's."""
+    try:
+        rec = record(md5)
+    except Exception:
+        rec = None  # AA down or blocked: LibGen may still have it
+    if rec and not name:
+        fu = rec["file_unified_data"]
+        name = None if NAME == "original" else nice_name(
+            fu.get("title_best"), fu.get("author_best"), fu.get("year_best"), fu.get("extension_best"))
+        name = name or urllib.parse.unquote(rec["additional"].get("filename") or "") or None
+    for label, url in sources(md5, rec):
+        err(f"  trying {label} ...")
+        try:
+            if path := download(url, outdir, md5, name):
+                return path
+            err(f"  {label}: md5 mismatch", "33")
+        except Exception as e:
+            err(f"  {label}: {e}", "33")
+    err(f"  all sources failed; try `aa torrent {md5}`", "31")
+
+
+def cmd_get(args):
+    if args[-1] == "-o":
+        sys.exit("usage: aa get <md5> [-o DIR]")
+    outdir = OUTDIR
+    if "-o" in args:
+        i = args.index("-o")
+        outdir, args = args[i + 1], args[:i] + args[i + 2:]
+        if not args or not re.fullmatch(r"[0-9a-fA-F]{32}", args[0]):
+            sys.exit("usage: aa get <md5> [-o DIR]")
+    if not os.path.isdir(outdir):
+        sys.exit(f"no such directory: {outdir}")
+    path = get_file(args[0].lower(), outdir)
+    print(path) if path else sys.exit(1)
+
+
+def cmd_torrent(args):
+    md5 = args[0].lower()
+    rec = record(md5)
+    if not rec:
+        sys.exit("AA record is members-only for this md5, so the torrent location is unknown")
+    paths = rec["additional"].get("torrent_paths") or []
+    if not paths:
+        sys.exit("no torrent for this file")
+    # ponytail: 20MB list fetched each call; cache it if this gets used a lot.
+    by_url = {t["url"].split("/torrents/", 1)[-1]: t for t in json.load(fetch(f"{AA}/dyn/torrents.json", 120))}
+    for p in paths:
+        t = by_url.get(p["torrent_path"])
+        print(f"{p['torrent_path']}  file: {p['file_level1']} {p['file_level2']}".rstrip())
+        if t:
+            print(f"  seeders {t['seeders']}  size {t['data_size']}  {t['magnet_link']}")
+            print(f"  aria2c --select-file=<index of {p['file_level1']}> '{t['url']}'  (aria2c -S lists indexes)")
+
+
+def card(i, r, width):
+    """Result as a few lines: wrapped title, author, format/size/year."""
+    w = max(30, min(width, 100)) - 6
+    title = textwrap.wrap(r["title"] or "(untitled)", w, max_lines=2, placeholder=" ...")
+    lines = [c(f"{i:>4}", "1;36") + "  " + c(title[0], "1")] + ["      " + c(t, "1") for t in title[1:]]
+    authors = split_authors(r["author"])
+    if authors:
+        who = ", ".join(authors[:2]) + (" et al." if len(authors) > 2 else "")
+        lines.append("      " + c(textwrap.shorten(who, w, placeholder=" ..."), "36"))
+    ext = c(f" {r['ext'].upper() or '?'} ", "30;" + EXT_COLOR.get(r["ext"], "47"))
+    lang = r.get("lang", "") if r.get("lang", "") not in ("", "English") else ""
+    meta = "  ".join(x for x in (r["size"], r["year"][:4] or "year ?", lang) if x)
+    lines.append(f"      {ext}  {c(meta, '90')}" + (c("  article", "33") if r["article"] else ""))
+    return "\n".join(lines)
+
+
+def parse_picks(s, n):
+    """'1,3-5' -> [1,3,4,5]; ignores out-of-range."""
+    out = []
+    for part in s.replace(" ", ",").split(","):
+        a, _, b = part.partition("-")
+        if a.isdigit() and (not b or b.isdigit()):
+            lo, hi = max(int(a), 1), min(int(b or a), n)
+            out += [i for i in range(lo, hi + 1) if i not in out]
+    return out
+
+
+PAGE = 10
+
+
+def classify(line, n):
+    """Prompt input -> (action, arg). Anything that is not a command is a new search."""
+    cmd = line.strip()
+    low = cmd.lower()
+    if low in ("q", "quit", "exit"):
+        return "quit", None
+    if low in ("", "m"):
+        return "more", None
+    if low in ("?", "h", "help"):
+        return "help", None
+    if re.fullmatch(r"[it]\s*\d{1,6}", low):
+        i = int(low[1:])
+        return ("info" if low[0] == "i" else "torrent", i) if 1 <= i <= n else ("bad", f"no result {i}")
+    if re.fullmatch(r"[\d,\s-]+", low) and not re.search(r"\d{7}", low):  # digits/ranges download
+        picks = parse_picks(low, n)
+        return ("get", picks) if picks else ("bad", f"pick 1-{n}, or /{cmd} to search for it" if n else f"/{cmd} to search for it")
+    if cmd.startswith("/"):
+        cmd = cmd[1:].strip()
+    return ("search", cmd) if cmd else ("bad", "empty search")
+
+
+def interactive(query):
+    width = shutil.get_terminal_size().columns
+    rows, shown = [], 0
+    keys = [("2", "download"), ("1,3-5", "several"), ("i2", "info"), ("t2", "torrent"),
+            ("m", "more"), ("any text", "new search"), ("q", "quit")]
+
+    def footer():
+        left = f"{shown}/{len(rows)} shown" if rows else "no results"
+        print("\n  " + c(left, "90") + "   " + "  ".join(f"{c(k, '1;36')} {v}" for k, v in keys))
+        print("  " + c(f"saves to {OUTDIR}", "90"))
+
+    def show_more():
+        nonlocal shown
+        for i in range(shown, min(shown + PAGE, len(rows))):
+            if rows[i]["article"] and (i == 0 or not rows[i - 1]["article"]):
+                print(c("\n  " + "\u2500" * 8 + " journal articles " + "\u2500" * 8, "2"))
+            print("\n" + card(i + 1, rows[i], width))
+        shown = min(shown + PAGE, len(rows))
+        footer()
+
+    def new_search(q):
+        nonlocal rows, shown
+        err(f"searching LibGen for {q!r} ...")
+        try:
+            rows, shown = search(q.split()), 0
+        except Exception as e:
+            return err(f"  search failed: {e}", "31")
+        show_more() if rows else err("  no results; try fewer or different words", "33")
+
+    if " ".join(query).strip():
+        new_search(" ".join(query))
+    else:
+        print("  type a title, author or ISBN to search, q to quit")
+    while True:
+        try:
+            line = input(c("aa> ", "1;35") if COLOR else "aa> ")
+        except (EOFError, KeyboardInterrupt):
+            print()
+            return
+        try:
+            action, arg = classify(line, len(rows))
+            if action == "quit":
+                return
+            if action == "search":
+                new_search(arg)
+            elif action == "help":
+                footer()
+            elif action == "bad":
+                err(f"  {arg}", "33")
+            elif action == "more":
+                show_more() if shown < len(rows) else err("  no more results; type a new search or q")
+            elif action in ("info", "torrent"):
+                r = rows[arg - 1]
+                try:
+                    if action == "info" and not record(r["md5"]):
+                        print("  " + c(r["title"], "1") + "\n  " + c(r["author"], "36"))
+                        print(c("  " + "  ".join(x for x in (r["ext"], r["size"], r["year"], r["lang"]) if x), "90"))
+                        print(c(f"  md5 {r['md5']}  (no Anna's Archive metadata without membership)", "90"))
+                        print(f"  {LG}/ads.php?md5={r['md5']}")
+                        continue
+                    (cmd_info if action == "info" else cmd_torrent)([r["md5"]])
+                except SystemExit as e:
+                    err(f"  {e}", "33")
+                except Exception as e:
+                    err(f"  failed: {e}", "31")
+            elif action == "get":
+                for i in arg:
+                    r = rows[i - 1]
+                    print(c(f"  [{i}] ", "1;36") + textwrap.shorten(r["title"], 60, placeholder=" ...") +
+                          c(f"  {r['ext']}, {r['size']}", "2"))
+                    try:
+                        name = None if NAME == "original" else nice_name(r["title"], r["author"], r["year"], r["ext"])
+                        path = get_file(r["md5"], name=name)
+                    except Exception as e:
+                        path = err(f"  failed: {e}", "31")
+                    if path:
+                        print(c("  saved ", "1;32") + path.replace(os.path.expanduser("~"), "~", 1))
+                        open_file(path)
+        except KeyboardInterrupt:
+            print()
+            err("  interrupted", "33")
+
+
+def selftest():
+    assert parse_picks("1,3-5", 4) == [1, 3, 4], parse_picks("1,3-5", 4)
+    assert parse_picks("x", 4) == [] and parse_picks("2 2", 4) == [2]
+    assert classify("natural language processing", 5) == ("search", "natural language processing")
+    assert classify("3 body problem", 5) == ("search", "3 body problem")
+    assert classify("1984", 5) == ("bad", "pick 1-5, or /1984 to search for it") and classify("/1984", 5) == ("search", "1984")
+    assert classify(" 2 ", 5) == ("get", [2]) and classify("1,3-4", 5) == ("get", [1, 3, 4])
+    assert classify("i2", 5) == ("info", 2) and classify("t9", 5)[0] == "bad"
+    assert classify("Q", 5)[0] == "quit" and classify("", 5)[0] == "more"
+    long = dict(ext="pdf", size="4 MB", year="2008", title="word " * 60, author="A; B; C", article=True)
+    lines = card(1, long, 80).split("\n")
+    assert all(len(re.sub(r"\033\[[\d;]*m", "", l)) <= 80 for l in lines), lines
+    assert len(lines) == 4 and "article" in lines[-1] and lines[2].strip() == "A, B et al.", lines
+    row = ('<table id="tablelibgen"><tr><td><a title="x<br>" href="edition.php?id=1">A Book</a> '
+           '<span class="badge badge-secondary">b 1</span></td><td>Ann</td><td></td><td>2008</td>'
+           '<td>English</td><td>9</td><td>4 MB</td><td>pdf</td>'
+           '<td><a href="/ads.php?md5=8336332BF5877E3ADBFB60AC70720CD5">L</a></td></tr></table>')
+    [r] = parse_libgen(row)
+    assert r == dict(md5="8336332bf5877e3adbfb60ac70720cd5", title="A Book", author="Ann",
+                     year="2008", lang="English", size="4 MB", ext="pdf", article=False), r
+    dup = row.replace("</table>", row.split("<table id=\"tablelibgen\">")[1].replace("8336", "9336"))
+    assert len(parse_libgen(dup)) == 1, "same title/format/size collapses"
+    t = row.replace("A Book", "Algo || Algo || Math").replace("<td>Ann", "<td>Ann (Author) ; [...] ; Bo (author)")
+    [t] = parse_libgen(t)
+    assert (t["title"], t["author"]) == ("Algo", "Ann ; Bo"), t
+    assert parse_libgen("<html>blocked</html>") == []
+    art = row.replace("A Book", "Intro 9780262046305; 026204630X").replace("<td>Ann", '<td title="Journal article">Ann')
+    [a] = parse_libgen(art)
+    assert a["title"] == "Intro" and a["article"], a
+    assert nice_name("Introduction to Algorithms 4", "Thomas H. Cormen, Charles E. Leiserson", "2022", "pdf") \
+        == "cormen-2022-introduction-to-algorithms-4.pdf"
+    assert nice_name("Über Café", "Gödel, Kurt; Escher", "1931 June", "epub") == "godel-1931-uber-cafe.epub"
+    assert nice_name("T", "", "", "pdf") == "t.pdf" and nice_name("", "", "", "pdf") is None
+    assert len(nice_name("word " * 50, "A", "2000", "pdf")) <= 70
+    assert split_authors("Boldrin, Michele ; Levine, David K") == ["Boldrin, Michele", "Levine, David K"]
+    assert split_authors("Thomas H. Cormen, Charles E. Leiserson") == ["Thomas H. Cormen", "Charles E. Leiserson"]
+    assert split_authors("Levine, David K.") == ["Levine, David K."]
+    assert surname("Boldrin, Michele ; Levine") == "Boldrin" and surname("Thomas H. Cormen, C. L") == "Cormen"
+    assert classify("1-999999", 5) == ("get", [1, 2, 3, 4, 5])
+    assert classify("9" * 5000, 5)[0] == "search" and classify("i" + "9" * 5000, 5)[0] == "search"
+    assert parse_picks("1-99999999999", 3) == [1, 2, 3]
+    t = row.replace("A Book", "Catch 1000000000 ed ISBN: 9780262046305")
+    assert parse_libgen(t)[0]["title"] == "Catch 1000000000 ed", parse_libgen(t)[0]["title"]
+    assert parse_libgen(row.replace("A Book", "Linear Algebra 1 Linear Algebra 1 1/3"))[0]["title"] == "Linear Algebra 1 1/3"
+    two = row.replace("</table>", row.split("<table id=\"tablelibgen\">")[1].replace("8336", "9336").replace("Ann", "Bob"))
+    assert len(parse_libgen(two)) == 2, "different authors must not collapse"
+    m = "5d41402abc4b2a76b9719d911017c592"
+    assert safe("Evil \x1b]52;c;cGF3bmVk\x07 \x9b31m") == "Evil ]52;c;cGF3bmVk 31m"
+    assert safe_name("../../.zshrc", m) == "zshrc" and safe_name("..", m) == m
+    assert safe_name("a\\b\x1b.pdf", m) == "b.pdf" and len(safe_name("x" * 400 + ".pdf", m).encode()) <= 190
+    import tempfile, time
+    with tempfile.TemporaryDirectory() as d:
+        open(os.path.join(d, "a.pdf"), "w").close()
+        assert free_path(d, "a.pdf", m).endswith("a (5d41402a).pdf")
+    t0 = time.time()
+    parse_libgen(row.replace("A Book", ";" * 30000))
+    assert time.time() - t0 < 1, "title regex backtracking"
+    print("ok")
+
+
+def need_md5(fn):
+    def run(args):
+        if args[0] != "-o" and not re.fullmatch(r"[0-9a-fA-F]{32}", args[0]):
+            sys.exit(f"not an md5: {args[0]!r}")
+        fn(args)
+    return run
+
+
+if __name__ == "__main__":
+    cmds = dict(search=cmd_search, info=need_md5(cmd_info), get=need_md5(cmd_get), torrent=need_md5(cmd_torrent))
+    a = sys.argv[1:]
+    if a and a[0] in ("-h", "--help", "help"):
+        print(__doc__)
+    elif a and a[0] == "selftest":
+        selftest()
+    elif a and a[0] in cmds:
+        if len(a) < 2:
+            sys.exit(f"usage: aa {a[0]} {'<query...>' if a[0] == 'search' else '<md5>'}" + (" [-o DIR]" if a[0] == "get" else ""))
+        try:
+            cmds[a[0]](a[1:])
+        except KeyboardInterrupt:
+            sys.exit(130)
+    elif a and a[0].startswith("-"):
+        sys.exit(f"unknown option {a[0]}\n{__doc__}")
+    else:
+        try:
+            import readline  # noqa: F401  (history + line editing for input())
+        except ImportError:
+            pass
+        interactive(a)
