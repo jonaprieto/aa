@@ -6,7 +6,10 @@
 [![license](https://img.shields.io/github/license/jonaprieto/aa)](LICENSE)
 [![Homebrew](https://img.shields.io/badge/brew-jonaprieto%2Faa-fbb040?logo=homebrew)](#install)
 
-Search for a book or paper from the terminal, pick one, and get a verified, well-named file.
+Search for a book or paper from the terminal, pick one, and get a verified, well-named file. `aa` is a client for [Anna's Archive](https://annas-archive.gl) and [Library Genesis](https://libgen.li); it hosts nothing itself.
+
+> [!WARNING]
+> Anna's Archive and Library Genesis are shadow libraries. Much of what they hold is under copyright, and downloading it can be illegal where you live. Both sites have been sued, and their domains get seized and blocked. Use `aa` only for material you have the right to access, such as public domain works, openly licensed books and papers, or copies you already own. You are responsible for what you download. See [Legal](#legal).
 
 ```
 $ aa introduction to algorithms
@@ -72,11 +75,13 @@ At the `aa>` prompt:
 
 ## Where files come from
 
-Search uses libgen.li, because Anna's Archive search sits behind a browser challenge. For each download `aa` tries, in order:
+Search uses [libgen.li](https://libgen.li), because [Anna's Archive search](https://annas-archive.gl/search) sits behind a browser challenge. For each download `aa` tries, in order:
 
-1. the Anna's Archive member API, when `AA_KEY` is set;
+1. the [Anna's Archive member API](https://annas-archive.gl/faq#api), when `AA_KEY` is set (get a key by [becoming a member](https://annas-archive.gl/donate));
 2. LibGen's direct download link;
-3. public IPFS gateways, when Anna's Archive exposes the file's IPFS CID.
+3. public [IPFS](https://ipfs.tech) gateways, when Anna's Archive exposes the file's IPFS CID.
+
+Anna's Archive publishes its [whole collection as torrents](https://annas-archive.gl/torrents); `aa torrent` points at the one holding a file. Its domain moves from time to time, and the [Wikipedia article](https://en.wikipedia.org/wiki/Anna%27s_Archive) lists the current ones.
 
 A file is kept only if its md5 matches the one you picked. Gateways often answer with an HTML page and a success status, so the md5 is what decides.
 
@@ -104,7 +109,19 @@ Downloads are named `[year]-[author]-[title]` in lowercase with ASCII-only words
 
 ## Legal
 
-Many files on these sites are under copyright. Downloading them may be illegal where you live. Use `aa` for material you have the right to access.
+`aa` is a search and download client. It does not host, mirror or index any files, and it goes through the same public pages and the documented member API that a browser would use. It does not bypass the sites' browser challenges.
+
+Many files on these sites are under copyright, and downloading them may be illegal where you live, with penalties that range from fines to criminal charges. Check the law in your country before using `aa`. Use it for material you have the right to access. This software comes with no warranty (see the [license](LICENSE)), and its author takes no responsibility for how it is used.
+
+## Acknowledgements
+
+`aa` is only a thin client. The work is done by:
+
+- [Anna's Archive](https://annas-archive.gl), which preserves books and papers from many collections and publishes its [code](https://software.annas-archive.gl/) and [data](https://annas-archive.gl/datasets) openly. If `aa` saves you time, consider [supporting it](https://annas-archive.gl/donate). A membership also gives you fast downloads through `AA_KEY`.
+- [Library Genesis](https://libgen.li) and its mirrors, which provide the search and most direct downloads.
+- [Sci-Hub](https://en.wikipedia.org/wiki/Sci-Hub), whose papers Anna's Archive mirrors.
+- The public [IPFS](https://ipfs.tech) gateway operators.
+- [scidownl](https://pypi.org/project/scidownl/), [calibre_annas_archive](https://github.com/ScottBot10/calibre_annas_archive) and [anna-dl](https://github.com/Nquxii/anna-dl), which showed which parts of these sites a client can rely on.
 
 ## License
 
