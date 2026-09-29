@@ -22,7 +22,7 @@ $ aa introduction to algorithms
 aa> 2
   [2] Introduction to Algorithms 4  pdf, 12 MB
   trying libgen ...
-  saved ~/Downloads/cormen-2022-introduction-to-algorithms-4.pdf
+  saved ~/Downloads/2022-cormen-introduction-to-algorithms-4.pdf
 ```
 
 `aa` is a single Python file with no dependencies beyond the standard library.
@@ -71,14 +71,14 @@ A file is kept only if its md5 matches the one you picked. Gateways often answer
 
 ## Filenames
 
-Downloads are named `[author]-[year]-[title]` in lowercase with ASCII-only words, the Book preset from [papershelf](https://github.com/jonaprieto/papershelf), for example `cormen-2022-introduction-to-algorithms-4.pdf`. An existing file is never overwritten; the new one gets an md5 suffix instead.
+Downloads are named `[year]-[author]-[title]` in lowercase with ASCII-only words and the title cut at 40 characters on a word boundary, the Reference preset from [papershelf](https://github.com/jonaprieto/papershelf), for example `2022-cormen-introduction-to-algorithms-4.pdf`. An existing file is never overwritten; the new one gets an md5 suffix instead.
 
 ## Configuration
 
 | variable | default | meaning |
 |---|---|---|
 | `AA_DIR` | `~/Downloads` | download folder |
-| `AA_NAME` | `[author]-[year]-[title]` | filename pattern; `original` keeps the server's name |
+| `AA_NAME` | `[year]-[author]-[title]` | filename pattern; `original` keeps the server's name |
 | `AA_OPEN` | `1` | set to `0` to not open files after an interactive download |
 | `AA_KEY` | | Anna's Archive member secret key, for fast downloads |
 | `AA_DOMAIN` | `annas-archive.gl` | Anna's Archive domain, which moves from time to time |

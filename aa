@@ -9,8 +9,8 @@
   aa get <md5> [-o DIR]    download (AA member API if AA_KEY set, then LibGen, then IPFS)
   aa torrent <md5>         magnet + file path inside torrent
 
-Files are renamed like papershelf's Book preset, [author:surname]-[year]-[title]
-(cormen-2022-introduction-to-algorithms-4.pdf), and opened after an interactive download.
+Files are renamed like papershelf's Reference preset, [year]-[author:surname]-[title:truncate40]
+(2022-cormen-introduction-to-algorithms-4.pdf), and opened after an interactive download.
 
 Env:
   AA_DIR     download folder (default ~/Downloads)
@@ -28,7 +28,7 @@ UA = {"User-Agent": "Mozilla/5.0"}
 COLOR = sys.stdout.isatty() and not os.environ.get("NO_COLOR")
 EXT_COLOR = dict(pdf="44", epub="42", mobi="43", azw3="43", djvu="45", fb2="46")  # bg; red stays for errors
 OUTDIR = os.path.expanduser(os.environ.get("AA_DIR", "~/Downloads"))
-NAME = os.environ.get("AA_NAME", "[author]-[year]-[title]")
+NAME = os.environ.get("AA_NAME", "[year]-[author]-[title]")
 
 
 def c(s, code):
@@ -231,7 +231,9 @@ def cmd_info(args):
 def slug(s, limit=60):
     s = unicodedata.normalize("NFKD", s).encode("ascii", "ignore").decode().lower()
     s = re.sub(r"[^a-z0-9]+", "-", s).strip("-")
-    return s[:limit].rsplit("-", 1)[0] if len(s) > limit else s
+    if len(s) <= limit or s[limit] == "-":
+        return s[:limit]
+    return s[:limit].rsplit("-", 1)[0]
 
 
 def surname(author):
@@ -241,9 +243,9 @@ def surname(author):
 
 
 def nice_name(title, author, year, ext):
-    """papershelf Book preset: [author:surname]-[year]-[title], lowercase slugs."""
+    """papershelf Reference preset: [year]-[author:surname]-[title:truncate40], lowercase slugs."""
     fields = dict(author=slug(surname(author or ""), 30), year=(re.search(r"\d{4}", year or "") or [""])[0],
-                  title=slug(title or ""))
+                  title=slug(title or "", 40))
     name = re.sub(r"\[(\w+)\]", lambda m: fields.get(m.group(1), ""), NAME)
     name = re.sub(r"-{2,}", "-", name).strip("-")
     return f"{name}.{ext}" if name and ext else None
@@ -501,10 +503,11 @@ def selftest():
     [a] = parse_libgen(art)
     assert a["title"] == "Intro" and a["article"], a
     assert nice_name("Introduction to Algorithms 4", "Thomas H. Cormen, Charles E. Leiserson", "2022", "pdf") \
-        == "cormen-2022-introduction-to-algorithms-4.pdf"
-    assert nice_name("Über Café", "Gödel, Kurt; Escher", "1931 June", "epub") == "godel-1931-uber-cafe.epub"
+        == "2022-cormen-introduction-to-algorithms-4.pdf"
+    assert nice_name("Über Café", "Gödel, Kurt; Escher", "1931 June", "epub") == "1931-godel-uber-cafe.epub"
     assert nice_name("T", "", "", "pdf") == "t.pdf" and nice_name("", "", "", "pdf") is None
-    assert len(nice_name("word " * 50, "A", "2000", "pdf")) <= 70
+    assert nice_name("Structure and Interpretation of Computer Programs", "Abelson", "1996", "pdf") \
+        == "1996-abelson-structure-and-interpretation-of-computer.pdf"  # title cut at 40, on a word
     assert split_authors("Boldrin, Michele ; Levine, David K") == ["Boldrin, Michele", "Levine, David K"]
     assert split_authors("Thomas H. Cormen, Charles E. Leiserson") == ["Thomas H. Cormen", "Charles E. Leiserson"]
     assert split_authors("Levine, David K.") == ["Levine, David K."]
