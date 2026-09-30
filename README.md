@@ -4,7 +4,7 @@
 [![python](https://img.shields.io/badge/python-3.9%2B-3776ab)](https://www.python.org)
 [![dependencies](https://img.shields.io/badge/dependencies-none-brightgreen)](folio)
 [![license](https://img.shields.io/github/license/jonaprieto/folio)](LICENSE)
-[![Homebrew](https://img.shields.io/badge/brew-jonaprieto%2Faa-fbb040?logo=homebrew)](#install)
+[![Homebrew](https://img.shields.io/badge/brew-jonaprieto%2Ffolio-fbb040?logo=homebrew)](#install)
 
 Search for a book or paper from the terminal, pick one, and get a verified, well-named file. `folio` is a client for [Anna's Archive](https://annas-archive.gl) and [Library Genesis](https://libgen.li); it hosts nothing itself.
 
