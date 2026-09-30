@@ -93,7 +93,25 @@ mkdir -p ~/.claude/skills && ln -s "$PWD/skills/folio" ~/.claude/skills/folio
 
 ## Where files come from
 
-Search uses [libgen.li](https://libgen.li), because [Anna's Archive search](https://annas-archive.gl/search) sits behind a browser challenge. For each download `folio` tries, in order:
+Search uses [libgen.li](https://libgen.li), because [Anna's Archive search](https://annas-archive.gl/search) sits behind a browser challenge.
+
+```mermaid
+flowchart TD
+    Q["folio search / folio query"] --> S["LibGen search<br/>libgen.li, then .bz .gl .vg .la"]
+    S --> P["pick a result: its md5"]
+    P --> M["metadata for the filename<br/>Anna's Archive record, else LibGen JSON"]
+    M --> K{"AA_KEY set?"}
+    K -- yes --> A["Anna's Archive fast download"]
+    K -- no --> L
+    A -- fails --> L["LibGen get.php<br/>each mirror in turn"]
+    L -- fails --> I["IPFS gateways<br/>only if the AA record lists a CID"]
+    I -- fails --> T["give up: try folio torrent md5"]
+    A & L & I -- file --> H{"md5 matches?"}
+    H -- yes --> F["save as year-author-title.ext"]
+    H -- no --> N["discard it: counts as that source failing"]
+```
+
+For each download `folio` tries, in order:
 
 1. the [Anna's Archive member API](https://annas-archive.gl/faq#api), when `AA_KEY` is set (get a key by [becoming a member](https://annas-archive.gl/donate));
 2. LibGen's direct download link, moving to the next mirror when one fails;
