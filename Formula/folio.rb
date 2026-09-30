@@ -1,10 +1,10 @@
 class Folio < Formula
   include Language::Python::Shebang
 
-  desc "Search LibGen and download books and papers from the terminal"
+  desc "Find and download books and papers from the terminal or an AI agent"
   homepage "https://github.com/jonaprieto/folio"
-  url "https://github.com/jonaprieto/folio/archive/refs/tags/v0.1.0.tar.gz"
-  sha256 "59edde691035389239bc4cedbb5f772a1e724f198f4d3b0b0549d69482962aaa"
+  url "https://github.com/jonaprieto/folio/archive/refs/tags/v0.2.0.tar.gz"
+  sha256 "269fd03aef46f9b61afb7d5e9f825785cde9dff759280b0109871d131b0479ff"
   license "MIT"
   head "https://github.com/jonaprieto/folio.git", branch: "main"
 
