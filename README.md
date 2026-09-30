@@ -1,18 +1,18 @@
-# aa
+# folio
 
-[![ci](https://github.com/jonaprieto/aa/actions/workflows/ci.yml/badge.svg)](https://github.com/jonaprieto/aa/actions/workflows/ci.yml)
+[![ci](https://github.com/jonaprieto/folio/actions/workflows/ci.yml/badge.svg)](https://github.com/jonaprieto/folio/actions/workflows/ci.yml)
 [![python](https://img.shields.io/badge/python-3.9%2B-3776ab)](https://www.python.org)
-[![dependencies](https://img.shields.io/badge/dependencies-none-brightgreen)](aa)
-[![license](https://img.shields.io/github/license/jonaprieto/aa)](LICENSE)
+[![dependencies](https://img.shields.io/badge/dependencies-none-brightgreen)](folio)
+[![license](https://img.shields.io/github/license/jonaprieto/folio)](LICENSE)
 [![Homebrew](https://img.shields.io/badge/brew-jonaprieto%2Faa-fbb040?logo=homebrew)](#install)
 
-Search for a book or paper from the terminal, pick one, and get a verified, well-named file. `aa` is a client for [Anna's Archive](https://annas-archive.gl) and [Library Genesis](https://libgen.li); it hosts nothing itself.
+Search for a book or paper from the terminal, pick one, and get a verified, well-named file. `folio` is a client for [Anna's Archive](https://annas-archive.gl) and [Library Genesis](https://libgen.li); it hosts nothing itself.
 
 > [!WARNING]
-> Anna's Archive and Library Genesis are shadow libraries. Much of what they hold is under copyright, and downloading it can be illegal where you live. Both sites have been sued, and their domains get seized and blocked. Use `aa` only for material you have the right to access, such as public domain works, openly licensed books and papers, or copies you already own. You are responsible for what you download. See [Legal](#legal).
+> Anna's Archive and Library Genesis are shadow libraries. Much of what they hold is under copyright, and downloading it can be illegal where you live. Both sites have been sued, and their domains get seized and blocked. Use `folio` only for material you have the right to access, such as public domain works, openly licensed books and papers, or copies you already own. You are responsible for what you download. See [Legal](#legal).
 
 ```
-$ aa introduction to algorithms
+$ folio introduction to algorithms
 
    2  Introduction to Algorithms 4
       Thomas H. Cormen, Charles E. Leiserson et al.
@@ -23,46 +23,46 @@ $ aa introduction to algorithms
        PDF   5 MB  2009
 
   10 of 100+ shown   2 download  1,3-5 several  i2 info  t2 torrent  m more  any text new search  q quit
-aa> 2
+folio> 2
   [2] Introduction to Algorithms 4  pdf, 12 MB
   trying libgen.li ...
   saved ~/Downloads/2022-cormen-introduction-to-algorithms-4.pdf
 ```
 
-`aa` is a single Python file with no dependencies beyond the standard library.
+`folio` is a single Python file with no dependencies beyond the standard library.
 
 ## Install
 
 With Homebrew:
 
 ```sh
-brew tap jonaprieto/aa https://github.com/jonaprieto/aa
-brew trust --formula jonaprieto/aa/aa   # third-party taps need it
-brew install aa
+brew tap jonaprieto/folio https://github.com/jonaprieto/folio
+brew trust --formula jonaprieto/folio/folio   # third-party taps need it
+brew install folio
 ```
 
 Or grab the single file, which only needs Python 3.9 or newer:
 
 ```sh
-curl -fsSL https://raw.githubusercontent.com/jonaprieto/aa/main/aa -o ~/.local/bin/aa
-chmod +x ~/.local/bin/aa
-aa selftest
+curl -fsSL https://raw.githubusercontent.com/jonaprieto/folio/main/folio -o ~/.local/bin/folio
+chmod +x ~/.local/bin/folio
+folio selftest
 ```
 
-Or clone the repo and symlink `aa` into a directory on your `PATH`.
+Or clone the repo and symlink `folio` into a directory on your `PATH`.
 
 ## Usage
 
 ```
-aa [query...]            interactive: search, pick by number, download
-aa search <query...>     print md5, format, size, year and title per result
-aa info <md5>            Anna's Archive record summary
-aa get <md5> [-o DIR]    download one file
-aa torrent <md5>         magnet link and the file's path inside the torrent
-aa selftest              offline checks
+folio [query...]          interactive: search, pick by number, download
+folio search <query...>   print md5, format, size, year and title per result
+folio info <md5>          Anna's Archive record summary
+folio get <md5> [-o DIR]  download one file
+folio torrent <md5>       magnet link and the file's path inside the torrent
+folio selftest            offline checks
 ```
 
-At the `aa>` prompt:
+At the `folio>` prompt:
 
 | input | does |
 |---|---|
@@ -75,13 +75,13 @@ At the `aa>` prompt:
 
 ## Where files come from
 
-Search uses [libgen.li](https://libgen.li), because [Anna's Archive search](https://annas-archive.gl/search) sits behind a browser challenge. For each download `aa` tries, in order:
+Search uses [libgen.li](https://libgen.li), because [Anna's Archive search](https://annas-archive.gl/search) sits behind a browser challenge. For each download `folio` tries, in order:
 
 1. the [Anna's Archive member API](https://annas-archive.gl/faq#api), when `AA_KEY` is set (get a key by [becoming a member](https://annas-archive.gl/donate));
 2. LibGen's direct download link, moving to the next mirror when one fails;
 3. public [IPFS](https://ipfs.tech) gateways, when Anna's Archive exposes the file's IPFS CID.
 
-Anna's Archive publishes its [whole collection as torrents](https://annas-archive.gl/torrents); `aa torrent` points at the one holding a file. Its domain moves from time to time, and the [Wikipedia article](https://en.wikipedia.org/wiki/Anna%27s_Archive) lists the current ones.
+Anna's Archive publishes its [whole collection as torrents](https://annas-archive.gl/torrents); `folio torrent` points at the one holding a file. Its domain moves from time to time, and the [Wikipedia article](https://en.wikipedia.org/wiki/Anna%27s_Archive) lists the current ones.
 
 A file is kept only if its md5 matches the one you picked. Gateways often answer with an HTML page and a success status, so the md5 is what decides.
 
@@ -93,31 +93,31 @@ Downloads are named `[year]-[author]-[title]` in lowercase with ASCII-only words
 
 | variable | default | meaning |
 |---|---|---|
-| `AA_DIR` | `~/Downloads` | download folder |
-| `AA_NAME` | `[year]-[author]-[title]` | filename pattern; `original` keeps the server's name |
-| `AA_OPEN` | `1` | set to `0` to not open files after an interactive download |
+| `FOLIO_DIR` | `~/Downloads` | download folder |
+| `FOLIO_NAME` | `[year]-[author]-[title]` | filename pattern; `original` keeps the server's name |
+| `FOLIO_OPEN` | `1` | set to `0` to not open files after an interactive download |
 | `AA_KEY` | | Anna's Archive member secret key, for fast downloads |
 | `AA_DOMAIN` | `annas-archive.gl` | Anna's Archive domain, which moves from time to time |
 | `LG_DOMAIN` | `libgen.li` | LibGen mirror to try first; `libgen.li`, `.bz`, `.gl`, `.vg` and `.la` follow when it fails |
 
 ## Limits
 
-- Search only covers what LibGen indexes. Files that only Anna's Archive holds need their md5, for `aa get`.
+- Search only covers what LibGen indexes. Files that only Anna's Archive holds need their md5, for `folio get`.
 - Anna's Archive record JSON is members-only for most files, so without `AA_KEY` the `info` and `torrent` commands show less.
 - The md5 check catches broken and substituted downloads. It cannot catch a hostile mirror, because the md5 comes from the same server as the file.
-- Sites change their HTML. If search suddenly returns nothing, run `aa selftest` and open an issue.
+- Sites change their HTML. If search suddenly returns nothing, run `folio selftest` and open an issue.
 
 ## Legal
 
-`aa` is a search and download client. It does not host, mirror or index any files, and it goes through the same public pages and the documented member API that a browser would use. It does not bypass the sites' browser challenges.
+`folio` is a search and download client. It does not host, mirror or index any files, and it goes through the same public pages and the documented member API that a browser would use. It does not bypass the sites' browser challenges.
 
-Many files on these sites are under copyright, and downloading them may be illegal where you live, with penalties that range from fines to criminal charges. Check the law in your country before using `aa`. Use it for material you have the right to access. This software comes with no warranty (see the [license](LICENSE)), and its author takes no responsibility for how it is used.
+Many files on these sites are under copyright, and downloading them may be illegal where you live, with penalties that range from fines to criminal charges. Check the law in your country before using `folio`. Use it for material you have the right to access. This software comes with no warranty (see the [license](LICENSE)), and its author takes no responsibility for how it is used.
 
 ## Acknowledgements
 
-`aa` is only a thin client. The work is done by:
+`folio` is only a thin client. The work is done by:
 
-- [Anna's Archive](https://annas-archive.gl), which preserves books and papers from many collections and publishes its [code](https://software.annas-archive.gl/) and [data](https://annas-archive.gl/datasets) openly. If `aa` saves you time, consider [supporting it](https://annas-archive.gl/donate). A membership also gives you fast downloads through `AA_KEY`.
+- [Anna's Archive](https://annas-archive.gl), which preserves books and papers from many collections and publishes its [code](https://software.annas-archive.gl/) and [data](https://annas-archive.gl/datasets) openly. If `folio` saves you time, consider [supporting it](https://annas-archive.gl/donate). A membership also gives you fast downloads through `AA_KEY`.
 - [Library Genesis](https://libgen.li) and its mirrors, which provide the search and most direct downloads.
 - [Sci-Hub](https://en.wikipedia.org/wiki/Sci-Hub), whose papers Anna's Archive mirrors.
 - The public [IPFS](https://ipfs.tech) gateway operators.

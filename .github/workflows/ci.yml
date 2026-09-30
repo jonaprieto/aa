@@ -21,8 +21,8 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: ${{ matrix.python }}
-      - run: python aa selftest
-      - run: python aa --help
+      - run: python folio selftest
+      - run: python folio --help
 
   formula:
     runs-on: macos-latest
@@ -35,8 +35,8 @@ jobs:
         run: |
           brew tap-new --no-git ci/local
           tap=$(brew --repository ci/local)
-          cp Formula/aa.rb "$tap/Formula/aa.rb"
-          brew audit --strict ci/local/aa
+          cp Formula/folio.rb "$tap/Formula/folio.rb"
+          brew audit --strict ci/local/folio
 
       - name: Install and test it from this checkout
         run: |
@@ -44,11 +44,11 @@ jobs:
           b=ci-${GITHUB_SHA::7}
           git checkout -q -B "$b"
           tap=$(brew --repository ci/local)
-          from='head "https://github.com/jonaprieto/aa.git"'
+          from='head "https://github.com/jonaprieto/folio.git"'
           from+=', branch: "main"'
           to="head \"file://$PWD\", using: :git, branch: \"$b\""
-          sed "s|$from|$to|" Formula/aa.rb > "$tap/Formula/aa.rb"
+          sed "s|$from|$to|" Formula/folio.rb > "$tap/Formula/folio.rb"
           # a sed that matched nothing would install from GitHub
-          grep -q "file://$PWD" "$tap/Formula/aa.rb"
-          brew install --HEAD ci/local/aa
-          brew test ci/local/aa
+          grep -q "file://$PWD" "$tap/Formula/folio.rb"
+          brew install --HEAD ci/local/folio
+          brew test ci/local/folio

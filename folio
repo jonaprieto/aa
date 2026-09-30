@@ -1,23 +1,23 @@
 #!/usr/bin/env python3
-"""aa: search LibGen, download by md5 via Anna's Archive record data.
+"""folio: search LibGen, download by md5 via Anna's Archive record data.
 
-  aa [query...]            interactive: search, pick by number, download; at the prompt,
-                           m pages through results, any text is a new search
-                           (/text forces a search, e.g. /1984)
-  aa search <query...>     LibGen search -> md5 list
-  aa info <md5>            Anna's Archive record summary
-  aa get <md5> [-o DIR]    download (AA member API if AA_KEY set, then LibGen, then IPFS)
-  aa torrent <md5>         magnet + file path inside torrent
+  folio [query...]          interactive: search, pick by number, download; at the prompt,
+                            m pages through results, any text is a new search
+                            (/text forces a search, e.g. /1984)
+  folio search <query...>   LibGen search -> md5 list
+  folio info <md5>          Anna's Archive record summary
+  folio get <md5> [-o DIR]  download (AA member API if AA_KEY set, then LibGen, then IPFS)
+  folio torrent <md5>       magnet + file path inside torrent
 
 Files are renamed like papershelf's Reference preset, [year]-[author:surname]-[title:truncate40]
 (2022-cormen-introduction-to-algorithms-4.pdf), and opened after an interactive download.
 
 Env:
-  AA_DIR     download folder (default ~/Downloads)
-  AA_NAME    filename pattern with [author] [year] [title]; "original" keeps the server's name
-  AA_OPEN    0 to not open files after download
-  AA_KEY     Anna's Archive member secret key
-  AA_DOMAIN  default annas-archive.gl;  LG_DOMAIN  default libgen.li
+  FOLIO_DIR     download folder (default ~/Downloads)
+  FOLIO_NAME    filename pattern with [author] [year] [title]; "original" keeps the server's name
+  FOLIO_OPEN    0 to not open files after download
+  AA_KEY        Anna's Archive member secret key
+  AA_DOMAIN     default annas-archive.gl;  LG_DOMAIN  default libgen.li
 """
 import hashlib, html, json, os, re, shutil, subprocess, sys, textwrap, unicodedata
 import urllib.error, urllib.parse, urllib.request
@@ -30,8 +30,8 @@ LG = "https://" + MIRRORS[0]  # the last mirror that answered
 UA = {"User-Agent": "Mozilla/5.0"}
 COLOR = sys.stdout.isatty() and not os.environ.get("NO_COLOR")
 EXT_COLOR = dict(pdf="44", epub="42", mobi="43", azw3="43", djvu="45", fb2="46")  # bg; red stays for errors
-OUTDIR = os.path.expanduser(os.environ.get("AA_DIR", "~/Downloads"))
-NAME = os.environ.get("AA_NAME", "[year]-[author]-[title]")
+OUTDIR = os.path.expanduser(os.environ.get("FOLIO_DIR", "~/Downloads"))
+NAME = os.environ.get("FOLIO_NAME", "[year]-[author]-[title]")
 
 
 def c(s, code):
@@ -273,7 +273,7 @@ def nice_name(title, author, year, ext):
 
 
 def open_file(path):
-    if os.environ.get("AA_OPEN", "1") != "0":
+    if os.environ.get("FOLIO_OPEN", "1") != "0":
         try:
             subprocess.run(["open" if sys.platform == "darwin" else "xdg-open", path],
                            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
@@ -300,18 +300,18 @@ def get_file(md5, outdir=OUTDIR, name=None):
             err(f"  {label}: md5 mismatch", "33")
         except Exception as e:
             err(f"  {label}: {e}", "33")
-    err(f"  all sources failed; try `aa torrent {md5}`", "31")
+    err(f"  all sources failed; try `folio torrent {md5}`", "31")
 
 
 def cmd_get(args):
     if args[-1] == "-o":
-        sys.exit("usage: aa get <md5> [-o DIR]")
+        sys.exit("usage: folio get <md5> [-o DIR]")
     outdir = OUTDIR
     if "-o" in args:
         i = args.index("-o")
         outdir, args = args[i + 1], args[:i] + args[i + 2:]
         if not args or not re.fullmatch(r"[0-9a-fA-F]{32}", args[0]):
-            sys.exit("usage: aa get <md5> [-o DIR]")
+            sys.exit("usage: folio get <md5> [-o DIR]")
     if not os.path.isdir(outdir):
         sys.exit(f"no such directory: {outdir}")
     path = get_file(args[0].lower(), outdir)
@@ -441,7 +441,7 @@ def interactive(query):
         print("  type a title, author or ISBN to search, q to quit")
     while True:
         try:
-            line = input(c("aa> ", "1;35") if COLOR else "aa> ")
+            line = input(c("folio> ", "1;35") if COLOR else "folio> ")
         except (EOFError, KeyboardInterrupt):
             print()
             return
@@ -580,7 +580,7 @@ if __name__ == "__main__":
         selftest()
     elif a and a[0] in cmds:
         if len(a) < 2:
-            sys.exit(f"usage: aa {a[0]} {'<query...>' if a[0] == 'search' else '<md5>'}" + (" [-o DIR]" if a[0] == "get" else ""))
+            sys.exit(f"usage: folio {a[0]} {'<query...>' if a[0] == 'search' else '<md5>'}" + (" [-o DIR]" if a[0] == "get" else ""))
         try:
             cmds[a[0]](a[1:])
         except KeyboardInterrupt:
