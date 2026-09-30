@@ -85,6 +85,12 @@ folio get 18e1b007a1dab45b30cc861ba2dfda25 -o papers
 
 `search` takes `-n N` (default 20), `--ext pdf,epub`, `--year 2017` or a range like `2015-2020`, `--lang English`, and `--articles` or `--books`; `--json` prints an array of `md5`, `title`, `author`, `year`, `lang`, `size`, `ext` and `article`. It exits 1 when nothing matches. `get` takes several md5s, prints one saved path per line on stdout, keeps progress on stderr, and exits 1 if any download failed.
 
+[`skills/folio/SKILL.md`](skills/folio/SKILL.md) teaches Claude Code and other agents to use it. Install it with
+
+```sh
+mkdir -p ~/.claude/skills && ln -s "$PWD/skills/folio" ~/.claude/skills/folio
+```
+
 ## Where files come from
 
 Search uses [libgen.li](https://libgen.li), because [Anna's Archive search](https://annas-archive.gl/search) sits behind a browser challenge. For each download `folio` tries, in order:
