@@ -23,7 +23,10 @@ import hashlib, html, json, os, re, shutil, subprocess, sys, textwrap, unicodeda
 import urllib.error, urllib.parse, urllib.request
 
 AA = "https://" + os.environ.get("AA_DOMAIN", "annas-archive.gl")
-LG = "https://" + os.environ.get("LG_DOMAIN", "libgen.li")
+# ponytail: mirrors from a 2026-09 probe, all serving the same data; LG_DOMAIN goes first.
+MIRRORS = list(dict.fromkeys([os.environ.get("LG_DOMAIN", "libgen.li"),
+                              "libgen.li", "libgen.bz", "libgen.gl", "libgen.vg", "libgen.la"]))
+LG = "https://" + MIRRORS[0]  # the last mirror that answered
 UA = {"User-Agent": "Mozilla/5.0"}
 COLOR = sys.stdout.isatty() and not os.environ.get("NO_COLOR")
 EXT_COLOR = dict(pdf="44", epub="42", mobi="43", azw3="43", djvu="45", fb2="46")  # bg; red stays for errors
@@ -48,6 +51,25 @@ def fetch(url, timeout=30):
 
 def text(url):
     return fetch(url).read(8 << 20).decode("utf-8", "replace")  # cap: pages are ~100 KB
+
+
+def mirrors():
+    """LibGen base URLs, the last one that answered first."""
+    return [LG] + [u for u in ("https://" + d for d in MIRRORS) if u != LG]
+
+
+def lg_text(path):
+    """GET path from the first LibGen mirror that answers, and remember it."""
+    global LG
+    for m in mirrors():
+        try:
+            page = text(m + path)
+        except Exception as e:
+            err(f"  {m[8:]}: {e}", "33")
+            continue
+        LG = m
+        return page
+    raise OSError(f"no LibGen mirror answered ({', '.join(MIRRORS)})")
 
 
 def safe(s):
@@ -143,12 +165,15 @@ def sources(md5, rec):
                 print(f"  aa-fast: {r.get('error')}", file=sys.stderr)
         except Exception as e:
             print(f"  aa-fast: {e}", file=sys.stderr)
-    try:
-        get = re.search(r'href="(get\.php\?md5=[^"]+)"', text(f"{LG}/ads.php?md5={md5}"))
-        if get:
-            yield "libgen", f"{LG}/" + html.unescape(get.group(1))
-    except Exception as e:
-        print(f"  libgen: {e}", file=sys.stderr)
+    for m in mirrors():  # a mirror whose get.php fails falls through to the next
+        try:
+            get = re.search(r'href="(get\.php\?md5=[^"]+)"', text(f"{m}/ads.php?md5={md5}"))
+        except Exception as e:
+            err(f"  {m[8:]}: {e}", "33")
+            continue
+        if not get:
+            break  # mirrors share one database: absent here, absent everywhere
+        yield m[8:], f"{m}/" + html.unescape(get.group(1))
     cids = []
     for u in (rec or {}).get("additional", {}).get("ipfs_urls") or []:
         cid = u.get("url", "").partition("/ipfs/")[2].split("?")[0]
@@ -188,11 +213,7 @@ def download(url, outdir, md5, name):
 
 def search(args, page=1):
     """One LibGen page -> (rows, more): more is False once a page comes back short."""
-    url = f"{LG}/index.php?req={urllib.parse.quote_plus(' '.join(args))}&res=100&page={page}"
-    try:
-        html_ = text(url)
-    except Exception:
-        html_ = text(url)  # libgen flakes; one retry
+    html_ = lg_text(f"/index.php?req={urllib.parse.quote_plus(' '.join(args))}&res=100&page={page}")
     rows = parse_libgen(html_)
     return rows, len(set(re.findall(r"md5=([0-9a-fA-F]{32})", html_))) >= 100
 
@@ -201,7 +222,7 @@ def cmd_search(args):
     try:
         rows, _ = search(args)
     except Exception as e:
-        sys.exit(f"search failed: {e} (LibGen at {LG}; set LG_DOMAIN to try a mirror)")
+        sys.exit(f"search failed: {e}")
     for r in rows:
         print(f"{r['md5']}  {r['ext']:5} {r['size']:>8}  {r['year'][:4]:4}  {r['title']} / {r['author']}")
     if not rows:
@@ -531,6 +552,14 @@ def selftest():
     t0 = time.time()
     parse_libgen(row.replace("A Book", ";" * 30000))
     assert time.time() - t0 < 1, "title regex backtracking"
+    global text, LG
+    real, LG = text, "https://" + MIRRORS[0]
+    text = lambda url: (_ for _ in ()).throw(OSError("down")) if MIRRORS[0] in url else "page " + url
+    try:
+        assert lg_text("/x").startswith("page https://") and LG != "https://" + MIRRORS[0]
+        assert mirrors()[0] == LG and len(mirrors()) == len(MIRRORS), "working mirror goes first"
+    finally:
+        text, LG = real, "https://" + MIRRORS[0]
     print("ok")
 
 

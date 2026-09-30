@@ -25,7 +25,7 @@ $ aa introduction to algorithms
   10 of 100+ shown   2 download  1,3-5 several  i2 info  t2 torrent  m more  any text new search  q quit
 aa> 2
   [2] Introduction to Algorithms 4  pdf, 12 MB
-  trying libgen ...
+  trying libgen.li ...
   saved ~/Downloads/2022-cormen-introduction-to-algorithms-4.pdf
 ```
 
@@ -78,7 +78,7 @@ At the `aa>` prompt:
 Search uses [libgen.li](https://libgen.li), because [Anna's Archive search](https://annas-archive.gl/search) sits behind a browser challenge. For each download `aa` tries, in order:
 
 1. the [Anna's Archive member API](https://annas-archive.gl/faq#api), when `AA_KEY` is set (get a key by [becoming a member](https://annas-archive.gl/donate));
-2. LibGen's direct download link;
+2. LibGen's direct download link, moving to the next mirror when one fails;
 3. public [IPFS](https://ipfs.tech) gateways, when Anna's Archive exposes the file's IPFS CID.
 
 Anna's Archive publishes its [whole collection as torrents](https://annas-archive.gl/torrents); `aa torrent` points at the one holding a file. Its domain moves from time to time, and the [Wikipedia article](https://en.wikipedia.org/wiki/Anna%27s_Archive) lists the current ones.
@@ -98,7 +98,7 @@ Downloads are named `[year]-[author]-[title]` in lowercase with ASCII-only words
 | `AA_OPEN` | `1` | set to `0` to not open files after an interactive download |
 | `AA_KEY` | | Anna's Archive member secret key, for fast downloads |
 | `AA_DOMAIN` | `annas-archive.gl` | Anna's Archive domain, which moves from time to time |
-| `LG_DOMAIN` | `libgen.li` | LibGen mirror (`libgen.bz`, `libgen.gl` and `libgen.vg` serve the same data) |
+| `LG_DOMAIN` | `libgen.li` | LibGen mirror to try first; `libgen.li`, `.bz`, `.gl`, `.vg` and `.la` follow when it fails |
 
 ## Limits
 
